@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .drag-drop {-color: #737ed8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgb(231, 231, 19);
+            padding-bottom: 10%;
+            padding-top: 10%;
+        }
+
+        .work {
+            display: flex;
+            gap: 30px;
+        }
+
+        .column {
+            flex: 1;
+            padding: 20px;
+            background-color: #f5f5f5;
+            border-radius: 8px;
+        }
+
+        .tasks {
+            margin-top: 10px;
+        }
+
+        .task-card {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 8px;
+            margin-bottom: 8px;
+            cursor: move;
+        }
+
+        .add-task {
+            margin-top: 10px;
+            background-color: pink;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.4);
+            padding-top: 60px;
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .column:hover {
+            transition: 0.5s;
+            transform: scale(1.1);
+        }
+
+        .drag-over {
+            border: 2px dashed #000;
+        }
+    </style>
+    <title>Task Repository</title>
+</head>
+
+<body>
+    <h2>
+    <div class="drag-drop"><b>DRAG & DROP</b></div></h2>
+    <div class="work">
+        <div class="column" id="not-started" ondragenter="handleDragEnter(event)" ondrop="handleDrop(event)"
+            ondragover="allowDrop(event)">
+            <h2>Not started (<span class="task-count">0</span>)</h2>
+            <div class="tasks" ondrop="drop(event)" ondragover="allowDrop(event)">
+
+            </div>
+            <button class="add-task" onclick="addNewTask('not-started')">+ New</button>
+        </div>
+        <div class="column" id="in-progress" ondragenter="handleDragEnter(event)" ondrop="handleDrop(event)"
+            ondragover="allowDrop(event)">
+            <h2>In progress (<span class="task-count">0</span>)</h2>
+            <div class="tasks" ondrop="drop(event)" ondragover="allowDrop(event)">
+
+            </div>
+            <button class="add-task" onclick="addNewTask('in-progress')">+ New</button>
+        </div>
+        <div class="column" id="completed" ondragenter="handleDragEnter(event)" ondrop="handleDrop(event)"
+            ondragover="allowDrop(event)">
+            <h2>Completed (<span class="task-count">0</span>)</h2>
+            <div class="tasks" ondrop="drop(event)" ondragover="allowDrop(event)">
+
+            </div>
+            <button class="add-task" onclick="addNewTask('completed')">+ New</button>
+        </div>
+    </div>
+
+    <div id="myModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeTaskDetailsModal()">&times;</span>
+            <h2>Edit Task</h2>
+            <input type="text" id="editedTaskTitle" placeholder="Enter new task title">
+            <button onclick="saveEditedTaskTitle()">Save Changes</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            initializeBoard();
+            loadTasksFromLocalStorage();
+        });
+
+        function initializeBoard() {
+            const columns = document.querySelectorAll(".column");
+
+            columns.forEach((column) => {
+                const tasks = column.querySelector(".tasks");
+                const addTaskButton = column.querySelector(".add-task");
+
+                addTaskButton.addEventListener("click", () => {
+                    const taskTitle = prompt("Enter task title:");
+                    if (taskTitle) {
+                        addNewTaskToColumn(column.id, taskTitle);
+                    }
+                });
+
+                tasks.addEventListener("dragstart", (e) => {
+                    e.dataTransfer.setData("text/plain", e.target.id);
+                });
+
+                tasks.addEventListener("dragover", (e) => {
+                    e.preventDefault();
+                });
+
+                tasks.addEventListener("drop", (e) => {
+                    e.preventDefault();
+                    const taskId = e.dataTransfer.getData("text/plain");
+                    const sourceColumnId = document.getElementById(taskId)?.parentElement?.id;
+                    const targetColumnId = column.id;
+
+                    if (sourceColumnId !== targetColumnId) {
+                        moveTask(taskId, sourceColumnId, targetColumnId);
+                    }
+                });
+
+                tasks.addEventListener("click", (e) => {
+                    const taskId = e.target.id;
+                    openTaskDetailsModal(taskId);
+                });
+            });
+        }
+
+        function addNewTaskToColumn(columnId, taskTitle) {
+            const column = document.getElementById(columnId);
+            const tasksContainer = column.querySelector(".tasks");
+
+            const taskCard = document.createElement("div");
+            taskCard.classList.add("task-card");
+            taskCard.textContent = taskTitle;
+            taskCard.draggable = true;
+            taskCard.id = "task-" + Date.now();
+
+            taskCard.addEventListener("click", () => {
+                openTaskDetailsModal(taskCard.id);
+            });
+
+            tasksContainer.appendChild(taskCard);
+            updateTaskCount(columnId);
+            saveTasksToLocalStorage();
+        }
+
+        function moveTask(taskId, sourceColumnId, targetColumnId) {
+            const sourceColumn = document.getElementById(sourceColumnId);
+            const targetColumn = document.getElementById(targetColumnId);
+            const tasksContainer = targetColumn.querySelector(".tasks");
+            const taskCard = document.getElementById(taskId);
+
+            tasksContainer.appendChild(taskCard);
+            updateTaskCount(sourceColumnId);
+            updateTaskCount(targetColumnId);
+            saveTasksToLocalStorage();
+        }
+
+        function updateTaskCount(columnId) {
+            const column = document.getElementById(columnId);
+            const taskCountElement = column.querySelector('.task-count');
+            const taskCards = column.querySelectorAll('.task-card');
+            taskCountElement.textContent = taskCards.length;
+        }
+
+        function allowDrop(e) {
+            e.preventDefault();
+        }
+
+        function drop(e) {
+            e.preventDefault();
+            const taskId = e.dataTransfer.getData("text/plain");
+            const targetColumnId = e.target.closest('.column').id;
+            const sourceColumnId = document.getElementById(taskId)?.parentElement?.id;
+            moveTask(taskId, sourceColumnId, targetColumnId);
+        }
+
+        function handleDragEnter(event) {
+            event.preventDefault();
+            const targetColumn = event.target.closest('.column');
+            targetColumn.classList.add('drag-over');
+        }
+
+        function handleDrop(event) {
+            event.preventDefault();
+            const draggedTaskCard = document.querySelector('.dragging');
+            const targetColumn = event.target.closest('.column');
+            const targetColumnId = targetColumn.id;
+            const sourceColumnId = draggedTaskCard?.parentElement?.id;
+
+            targetColumn.classList.remove('drag-over');
+            targetColumn.querySelector('.tasks').appendChild(draggedTaskCard);
+
+            if (sourceColumnId !== targetColumnId) {
+                updateTaskCount(sourceColumnId);
+                updateTaskCount(targetColumnId);
+                saveTasksToLocalStorage();
+            }
+        }
+
+        function addNewTask(columnId) {
+            const taskTitle = prompt("Enter task title:");
+            if (taskTitle) {
+                addNewTaskToColumn(columnId, taskTitle);
+            }
+        }
+
+        function openTaskDetailsModal(taskId) {
+            const modal = document.getElementById("myModal");
+            const span = document.querySelector(".close");
+            const editedTaskTitleInput = document.getElementById("editedTaskTitle");
+
+            modal.style.display = "block";
+            editedTaskTitleInput.value = document.getElementById(taskId).textContent;
+            span.onclick = function () {
+                modal.style.display = "none";
+            }
+
+            window.onclick = function (event) {
+                if (event.target == modal) {
+                    modal.style.display = "none";
+                }
+            }
+        }
+
+        function closeTaskDetailsModal() {
+            const modal = document.getElementById("myModal");
+            modal.style.display = "none";
+        }
+
+        function saveEditedTaskTitle() {
+            const modal = document.getElementById("myModal");
+            const editedTaskTitleInput = document.getElementById("editedTaskTitle");
+            const taskId = document.querySelector(".modal-content .close").id;
+
+            if (taskId) {
+                const taskCard = document.getElementById(taskId);
+                taskCard.textContent = editedTaskTitleInput.value;
+                modal.style.display = "none";
+                saveTasksToLocalStorage();
+            }
+        }
+
+        function loadTasksFromLocalStorage() {
+            const columns = document.querySelectorAll(".column");
+            columns.forEach((column) => {
+                const tasksContainer = column.querySelector(".tasks");
+                const tasks = JSON.parse(localStorage.getItem(column.id)) || [];
+
+                tasks.forEach((task) => {
+                    addNewTaskToColumn(column.id, task.title);
+                });
+            });
+        }
+
+        function saveTasksToLocalStorage() {
+            const columns = document.querySelectorAll(".column");
+            columns.forEach((column) => {
+                const tasksContainer = column.querySelector(".tasks");
+                const tasks = Array.from(tasksContainer.children).map((taskCard) => ({
+                    title: taskCard.textContent,
+                }));
+
+                localStorage.setItem(column.id, JSON.stringify(tasks));
+            });
+        }
+    </script>
+</body>
+
+</html>
